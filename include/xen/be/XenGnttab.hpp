@@ -184,6 +184,53 @@ private:
 };
 
 /***************************************************************************//**
+ * Create a DMA buffer for grant reference(s) provided.
+ * XenGnttabDmaBufferMapper maps foreign grant table reference(s)
+ * on top of the local DMA buffer, referenced by the file descriptor.
+ * File descriptor of DMA buffer can be accessed by getFd(...) method.
+ *
+ * @code
+ * XenGnttabDmaBufferMapper buffer(1, fd, &refs,);
+ *
+ * int dmaBufFd = buffer.getFd();
+ *
+ * @endcode
+ * @ingroup xen
+ ******************************************************************************/
+class XenGnttabDmaBufferMapper
+{
+public:
+
+	/**
+	 * @param[in] domId domId domain id for which grant references
+	 *            will be produced
+	 * @param[in] fd dma buffer file descriptor
+	 * @param[in] refs  vector of grant reference ids
+	 */
+	XenGnttabDmaBufferMapper(domid_t domId, const uint32_t fd, const GrantRefs &refs,
+							   size_t offset = 0);
+
+	int getFd() const { return mDmaBufFd; }
+
+	XenGnttabDmaBufferMapper(const XenGnttabDmaBufferMapper&) =
+			delete;
+	XenGnttabDmaBufferMapper& operator=(XenGnttabDmaBufferMapper const&) =
+			delete;
+	~XenGnttabDmaBufferMapper();
+
+	int waitForReleased(int timeoutMs);
+	void releaseBuffer();
+private:
+	int mDmaBufFd;
+	xengnttab_handle* mHandle;
+	Log mLog;
+	bool mBufferReleased;
+
+	void init(domid_t domId, const uint32_t fd, const GrantRefs &refs, size_t offset);
+	void release();
+};
+
+/***************************************************************************//**
  * Grant references for the pages of a DMA buffer.
  * XenGnttabDmaBufferImporter grants reference(s) and exports those for
  * a local DMA buffer provided. Then the grant refereneces of the imported

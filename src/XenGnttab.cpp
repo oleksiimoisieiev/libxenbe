@@ -211,6 +211,107 @@ void XenGnttabDmaBufferExporter::release()
 }
 
 /*******************************************************************************
+ * XenGnttabDmaBufferMapper
+ ******************************************************************************/
+
+XenGnttabDmaBufferMapper::XenGnttabDmaBufferMapper(domid_t domId,
+												   const uint32_t fd,
+												   const GrantRefs &refs,
+												   size_t offset) :
+	mDmaBufFd(-1),
+	mLog("XenGnttabDmaBufferMapper"),
+	mBufferReleased(false)
+{
+	try
+	{
+		init(domId, fd, refs, offset);
+	}
+	catch(const std::exception& e)
+	{
+		release();
+
+		throw;
+	}
+}
+
+XenGnttabDmaBufferMapper::~XenGnttabDmaBufferMapper()
+{
+	if (!mBufferReleased)
+	{
+		release();
+	}
+	mDmaBufFd = -1;
+}
+
+int XenGnttabDmaBufferMapper::waitForReleased(int timeoutMs)
+{
+	uint32_t fd = mDmaBufFd;
+	int ret;
+
+	ret = xengnttab_dmabuf_map_wait_released(mHandle, fd, timeoutMs);
+
+	if (ret)
+	{
+		DLOG(mLog, ERROR) << "Wait for DMA buffer failed, fd: "
+					  << fd << ", err: " << ret
+					  << "(" << strerror(errno) << ")";
+	}
+
+	return ret;
+}
+
+void XenGnttabDmaBufferMapper::releaseBuffer()
+{
+	release();
+}
+/*******************************************************************************
+ * Private
+ ******************************************************************************/
+
+void XenGnttabDmaBufferMapper::init(domid_t domId, const uint32_t fd,
+									  const GrantRefs &refs, size_t offset)
+{
+	int ret;
+
+	mHandle = XenGnttab::getHandle();
+
+	DLOG(mLog, DEBUG) << "Map DMA buffer on grant references, dom: "
+					  << domId << ", count: " << refs.size() << " fd: "
+					  << fd;
+
+	/* Always allocate the buffer to be DMA capable. */
+	DLOG(mLog, DEBUG) << "DMA buffer offset: " << offset;
+
+	ret = xengnttab_dmabuf_map_refs_to_buf(mHandle, domId, GNTDEV_DMA_FLAG_WC,
+											refs.size(), refs.data(), fd,
+											offset);
+
+	if (ret)
+	{
+		throw XenGnttabException("Can't map DMA buffer on grant references",
+								 errno);
+	}
+
+	mDmaBufFd = fd;
+}
+
+void XenGnttabDmaBufferMapper::release()
+{
+	int ret;
+
+	DLOG(mLog, DEBUG) << "Release DMA buffer, fd: " << mDmaBufFd;
+
+	mBufferReleased = true;
+
+	ret = xengnttab_dmabuf_map_release(mHandle, mDmaBufFd);
+
+	if (ret)
+	{
+		throw XenGnttabException("Can't release DMA buffer", errno);
+	}
+}
+
+/*******************************************************************************
  * XenGnttabDmaBufferImporter
  ******************************************************************************/
 
